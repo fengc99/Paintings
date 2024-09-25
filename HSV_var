@@ -90,7 +90,7 @@ def calculate_saturation_luminosity_stats(image_hsv):
     return sat_avg, lum_avg, sat_std, lum_std
 
 # Get all the image files in the folder
-folder_path = "img//full//3"
+folder_path = "#your#path#"
 image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
 
 # Create an empty DataFrame to store the results
@@ -131,4 +131,4 @@ for image_file in image_files:
 
 # output 
 df = pd.DataFrame(data)
-df.to_csv("HSV_ex3.csv", index=False)
+df.to_csv("HSV_var.csv", index=False)
