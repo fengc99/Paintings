@@ -1,0 +1,134 @@
+import os
+import cv2
+import numpy as np
+import pandas as pd
+
+# Define the range of olor (HSV)
+color_ranges = {
+    "Red1": [(0, 50, 50), (10, 255, 255)],
+    "Red2": [(156, 50, 50), (180, 255, 255)],
+    "Orange": [(11, 50, 50), (25, 255, 255)],
+    "Yellow": [(26, 50, 50), (34, 255, 255)],
+    "Green": [(35, 50, 50), (77, 255, 255)],
+    "Cyan": [(78, 50, 50), (99, 255, 255)],
+    "Blue": [(100, 50, 50), (124, 255, 255)],
+    "Purple": [(125, 50, 50), (155, 255, 255)],
+    "Black": [(0, 0, 0), (180, 255, 50)],
+    "White": [(0, 0, 200), (180, 20, 255)]
+}
+
+# Define function to calculate color pixel percentage
+def calculate_color_percentage(image_hsv, color_ranges):
+    img_size = image_hsv.shape[0] * image_hsv.shape[1]
+    percentages = {}
+
+    # Calculate color pixel percentage
+    for color, (lower, upper) in color_ranges.items():
+        mask = cv2.inRange(image_hsv, np.array(lower), np.array(upper))
+        color_pixels = cv2.countNonZero(mask)
+        percentages[f"Pct_{color}"] = (color_pixels / img_size) * 100
+
+    # Merge the two red intervals
+    red_percentage = percentages["Pct_Red1"] + percentages["Pct_Red2"]
+    percentages["Pct_Red"] = red_percentage
+    del percentages["Pct_Red1"]
+    del percentages["Pct_Red2"]
+
+    return percentages
+
+# Define a function to calculate color dispersion
+def calculate_dispersion(image_hsv, color_ranges):
+    h, w = image_hsv.shape[:2]
+    diag_length = np.sqrt(h**2 + w**2)
+    dispersions = {}
+
+    for color, (lower, upper) in color_ranges.items():
+        mask = cv2.inRange(image_hsv, np.array(lower), np.array(upper))
+        y_coords, x_coords = np.nonzero(mask)
+        if len(x_coords) > 0:
+            centroid_x = np.mean(x_coords)
+            centroid_y = np.mean(y_coords)
+            distances = np.sqrt((x_coords - centroid_x)**2 + (y_coords - centroid_y)**2)
+            dispersions[f"Disp_{color}"] = np.mean(distances) / diag_length
+        else:
+            dispersions[f"Disp_{color}"] = 0.0
+
+    # Calculate Disp_Red as the discreteness of all red pixels
+    red_mask1 = cv2.inRange(image_hsv, np.array(color_ranges["Red1"][0]), np.array(color_ranges["Red1"][1]))
+    red_mask2 = cv2.inRange(image_hsv, np.array(color_ranges["Red2"][0]), np.array(color_ranges["Red2"][1]))
+    combined_red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+
+    y_coords, x_coords = np.nonzero(combined_red_mask)
+    if len(x_coords) > 0:
+        centroid_x = np.mean(x_coords)
+        centroid_y = np.mean(y_coords)
+        distances = np.sqrt((x_coords - centroid_x)**2 + (y_coords - centroid_y)**2)
+        dispersions["Disp_Red"] = np.mean(distances) / diag_length
+    else:
+        dispersions["Disp_Red"] = 0.0
+
+    return dispersions
+
+# Define functions to calculate Saturation and Luminosity
+def calculate_saturation_luminosity_stats(image_hsv):
+    s = image_hsv[:, :, 1]  # Saturation channel
+    v = image_hsv[:, :, 2]  # Luminosity (Brightness) channel
+
+   # Exclude white and black parts
+    non_white_black_mask = cv2.inRange(image_hsv, (0, 0, 50), (180, 255, 200))
+    s_non_white_black = s[non_white_black_mask > 0]
+    v_non_white_black = v[non_white_black_mask > 0]
+
+    if len(s_non_white_black) > 0:
+        sat_avg = np.mean(s_non_white_black)
+        lum_avg = np.mean(v_non_white_black)
+        sat_std = np.std(s_non_white_black)
+        lum_std = np.std(v_non_white_black)
+    else:
+        sat_avg = lum_avg = sat_std = lum_std = 0
+
+    return sat_avg, lum_avg, sat_std, lum_std
+
+# Get all the image files in the folder
+folder_path = "img//full//3"
+image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
+
+# Create an empty DataFrame to store the results
+data = {
+    "filename": [], "H": [], "S": [], "V": [],
+    "Sat_Avg": [], "Lum_Avg": [], "Sat_Std": [], "Lum_Std": [],
+    "Pct_Red": [], "Pct_Orange": [], "Pct_Yellow": [], "Pct_Green": [], "Pct_Cyan": [], "Pct_Blue": [], "Pct_Purple": [], "Pct_Black": [], "Pct_White": [],
+    "Disp_Red": [], "Disp_Orange": [], "Disp_Yellow": [], "Disp_Green": [], "Disp_Cyan": [], "Disp_Blue": [], "Disp_Purple": [], "Disp_Black": [], "Disp_White": []
+}
+for image_file in image_files:
+    image_path = os.path.join(folder_path, image_file)
+    img = cv2.imread(image_path)
+    if img is None:
+        continue
+
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    h_mean, s_mean, v_mean = np.mean(img_hsv[:, :, 0]), np.mean(img_hsv[:, :, 1]), np.mean(img_hsv[:, :, 2])
+
+    color_percentages = calculate_color_percentage(img_hsv, color_ranges)
+
+    sat_avg, lum_avg, sat_std, lum_std = calculate_saturation_luminosity_stats(img_hsv)
+
+    color_dispersions = calculate_dispersion(img_hsv, color_ranges)
+
+    data["filename"].append(image_file)
+    data["H"].append(h_mean)
+    data["S"].append(s_mean)
+    data["V"].append(v_mean)
+    data["Sat_Avg"].append(sat_avg)
+    data["Lum_Avg"].append(lum_avg)
+    data["Sat_Std"].append(sat_std)
+    data["Lum_Std"].append(lum_std)
+
+    for color in ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Black", "White"]:
+        data[f"Pct_{color}"].append(color_percentages[f"Pct_{color}"])
+        data[f"Disp_{color}"].append(color_dispersions[f"Disp_{color}"])
+
+# output 
+df = pd.DataFrame(data)
+df.to_csv("HSV_ex3.csv", index=False)
